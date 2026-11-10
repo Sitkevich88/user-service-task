@@ -3,13 +3,31 @@ spring:
     name: users-service-task
 
 upstream:
-  base-url: https://jsonplaceholder.typicode.com
-  connect-timeout: 1s
-  # Users is required: allow a bit more time before we give up.
-  users-read-timeout: 2s
-  # Posts can take up to 3s upstream. We deliberately cut it off earlier and degrade.
-  posts-read-timeout: 1500ms
-  # Retries (in addition to the first attempt) for the posts call on 5xx / IO errors.
-  posts-retries: 1
   # Hard budget for the whole endpoint. Retries never push the response past this.
   overall-deadline: 3s
+
+  # Required upstream: no summary without a user.
+  users:
+    base-url: https://jsonplaceholder.typicode.com
+    connect-timeout: 1s
+    read-timeout: 2s
+
+  # Optional upstream: may take up to 3s and fail ~10% of the time. We cut it off earlier and degrade.
+  posts:
+    base-url: https://jsonplaceholder.typicode.com
+    connect-timeout: 1s
+    read-timeout: 1500ms
+    retry:
+      # Retries in addition to the first attempt, only for 5xx / IO errors (never 4xx or timeouts).
+      max-retries: 1
+      delay-millis: 50
+      jitter-millis: 25
+
+server:
+  #port: 8080
+  tomcat:
+    # Inbound API call logging without custom code: method, URI, status, bytes, duration (ms).
+    accesslog:
+      enabled: true
+      directory: logs
+      pattern: "%t \"%r\" %s %b %D ms"

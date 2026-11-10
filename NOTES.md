@@ -15,13 +15,14 @@ Why: posts fails ~10% of the time and takes up to 3 s. If it could fail the endp
 
 - **Concurrency:** `CompletableFuture` on a virtual-thread executor; both calls start immediately. If users fails, the posts future is cancelled. `StructuredTaskScope` is still preview in Java 21, so I did not use it.
 - **Timeouts:** connect 1 s, users read 2 s, posts read 1.5 s (deliberately below the 3 s worst case), overall deadline 3 s. All in `application.yaml`.
-- **Retry:** posts only, one retry, only for 5xx / IO errors. Not for 4xx and **not for timeouts** (a slow upstream is likely to be slow again, and the retry would eat the whole budget). With ~10% failures one retry brings the degraded rate to ~1%.
-- **Own DTOs** with only the fields we expose, so upstream schema changes do not leak into our API.
+- **Retry:** Spring Framework 7's built-in `@Retryable` (enabled with `@EnableResilientMethods`) on `PostsClient.fetchByUser`, no extra dependency. One retry, 50 ms delay + jitter (all in `upstream.posts.retry.*`), and a `TransientFailurePredicate` that accepts only 5xx / IO errors. Not 4xx and **not timeouts** (a slow upstream is likely to be slow again, and the retry would eat the budget). With ~10% failures one retry brings the degraded rate to ~1%. Limitation: the overall deadline is enforced by the caller (`future.get`), the retry loop itself does not know about it. With one retry the extra work is bounded.
+- **Logging:** inbound calls via Tomcat's access log, configured purely in `application.yaml` (`server.tomcat.accesslog.*`, written to `logs/`, includes duration). Outbound calls via a `ClientHttpRequestInterceptor` on both `RestClient`s (logger `upstream.calls`): one line per attempt, so retries and timeouts are visible. This one needs code: `logging.level.org.springframework.web.client=DEBUG` only prints "Reading to [...]", with no URL, status or timing. No bodies or headers are logged on purpose (PII, noise).
+- **DTOs:** the summary contains all upstream data (full user with address, geo and company; posts without the redundant `userId`), so one set of records in `api/dto` is used both to read upstream responses and to build our response. No mapping layer. Trade-off: the upstream schema is now part of our API contract. `@JsonIgnoreProperties(ignoreUnknown = true)` keeps new upstream fields from breaking us, but they will not show up in the summary until the records are extended.
 - **Tests use a tiny fake upstream on the JDK `HttpServer`** instead of WireMock. It can script delays and per-call failures, and needs no extra dependency (less risk with Spring Boot 4 compatibility).
 
 ## Deliberately left out
 
-Caching, circuit breaker / bulkhead, authentication, rate limiting, OpenAPI, Docker, CI, metrics and tracing, pagination of posts (jsonplaceholder returns ~10 per user).
+Caching, correlation / trace ids in logs, circuit breaker / bulkhead, authentication, rate limiting, OpenAPI, Docker, CI, metrics and tracing, pagination of posts (jsonplaceholder returns ~10 per user).
 
 ## What I'd do next
 
@@ -42,5 +43,6 @@ Written with Claude Code.
 - **Helped:** planning the failure policy, boilerplate (config, DTOs, clients), the fake upstream and the test scenarios.
 - **Got wrong / needed fixing:**
   - First version of the controller used `@Validated` and `@Positive`, but the project has no validation starter, so it would not have worked. Replaced by an explicit check.
+  - I first added a custom `OncePerRequestFilter` for inbound logging. The user pointed out that this is available through configuration; I checked and replaced the filter with the access log settings.
   - A first attempt to write the test files through a shell heredoc failed silently on quoting. Nothing was written, and I only noticed by checking the directory.
   - Spring Boot 4 moved packages and starters (e.g. `org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc`). I checked the real jar contents instead of trusting Boot 3 habits.

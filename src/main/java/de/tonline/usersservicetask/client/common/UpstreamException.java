@@ -1,4 +1,4 @@
-package de.tonline.usersservicetask.client;
+package de.tonline.usersservicetask.client.common;
 
 /** An upstream call failed. {@code timeout} distinguishes "too slow" (504) from "broken" (502). */
 public class UpstreamException extends RuntimeException {

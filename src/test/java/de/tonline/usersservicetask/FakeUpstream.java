@@ -29,10 +29,16 @@ final class FakeUpstream implements AutoCloseable {
     }
 
     static final String USER_JSON = """
-            {"id":1,"name":"Leanne Graham","username":"Bret","email":"l@x.org",
-             "company":{"name":"Romaguera-Crona","catchPhrase":"ignored"},"phone":"ignored"}""";
+            {"id":1,"name":"Leanne Graham","username":"Bret","email":"Sincere@april.biz",
+             "address":{"street":"Kulas Light","suite":"Apt. 556","city":"Gwenborough","zipcode":"92998-3874",
+                        "geo":{"lat":"-37.3159","lng":"81.1496"}},
+             "phone":"1-770-736-8031 x56442","website":"hildegard.org",
+             "company":{"name":"Romaguera-Crona","catchPhrase":"Multi-layered client-server neural-net",
+                        "bs":"harness real-time e-markets"},
+             "somethingNew":"unknown upstream fields must not break us"}""";
     static final String POSTS_JSON = """
-            [{"userId":1,"id":1,"title":"t1","body":"b1"},{"userId":1,"id":2,"title":"t2","body":"b2"}]""";
+            [{"userId":1,"id":1,"title":"sunt aut facere","body":"quia et suscipit\\nsuscipit recusandae"},
+             {"userId":1,"id":2,"title":"qui est esse","body":"est rerum tempore vitae"}]""";
 
     private final HttpServer server;
     final AtomicInteger userCalls = new AtomicInteger();

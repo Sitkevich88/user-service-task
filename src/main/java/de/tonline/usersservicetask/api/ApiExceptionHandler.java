@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
-import de.tonline.usersservicetask.client.UpstreamException;
+import de.tonline.usersservicetask.client.common.UpstreamException;
 import de.tonline.usersservicetask.client.UserNotFoundException;
 
 @RestControllerAdvice

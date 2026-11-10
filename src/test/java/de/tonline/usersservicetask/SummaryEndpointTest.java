@@ -21,10 +21,11 @@ import org.springframework.test.web.servlet.MockMvc;
  * Timeouts are short so the suite stays fast.
  */
 @SpringBootTest(properties = {
-        "upstream.connect-timeout=500ms",
-        "upstream.users-read-timeout=600ms",
-        "upstream.posts-read-timeout=400ms",
-        "upstream.posts-retries=1",
+        "upstream.users.connect-timeout=500ms",
+        "upstream.users.read-timeout=600ms",
+        "upstream.posts.connect-timeout=500ms",
+        "upstream.posts.read-timeout=400ms",
+        "upstream.posts.retry.max-retries=1",
         "upstream.overall-deadline=1500ms"
 })
 @AutoConfigureMockMvc
@@ -34,7 +35,8 @@ class SummaryEndpointTest {
 
     @DynamicPropertySource
     static void upstream(DynamicPropertyRegistry registry) {
-        registry.add("upstream.base-url", UPSTREAM::baseUrl);
+        registry.add("upstream.users.base-url", UPSTREAM::baseUrl);
+        registry.add("upstream.posts.base-url", UPSTREAM::baseUrl);
     }
 
     @AfterAll
@@ -51,15 +53,30 @@ class SummaryEndpointTest {
     }
 
     @Test
-    void mergesUserAndPosts() throws Exception {
+    void mergesAllUserAndPostData() throws Exception {
         mvc.perform(get("/users/1/summary"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.user.id").value(1))
                 .andExpect(jsonPath("$.user.name").value("Leanne Graham"))
-                .andExpect(jsonPath("$.user.company").value("Romaguera-Crona"))
-                .andExpect(jsonPath("$.user.phone").doesNotExist())
+                .andExpect(jsonPath("$.user.username").value("Bret"))
+                .andExpect(jsonPath("$.user.email").value("Sincere@april.biz"))
+                .andExpect(jsonPath("$.user.address.street").value("Kulas Light"))
+                .andExpect(jsonPath("$.user.address.suite").value("Apt. 556"))
+                .andExpect(jsonPath("$.user.address.city").value("Gwenborough"))
+                .andExpect(jsonPath("$.user.address.zipcode").value("92998-3874"))
+                .andExpect(jsonPath("$.user.address.geo.lat").value("-37.3159"))
+                .andExpect(jsonPath("$.user.address.geo.lng").value("81.1496"))
+                .andExpect(jsonPath("$.user.phone").value("1-770-736-8031 x56442"))
+                .andExpect(jsonPath("$.user.website").value("hildegard.org"))
+                .andExpect(jsonPath("$.user.company.name").value("Romaguera-Crona"))
+                .andExpect(jsonPath("$.user.company.catchPhrase").value("Multi-layered client-server neural-net"))
+                .andExpect(jsonPath("$.user.company.bs").value("harness real-time e-markets"))
                 .andExpect(jsonPath("$.posts.length()").value(2))
-                .andExpect(jsonPath("$.posts[0].title").value("t1"))
+                .andExpect(jsonPath("$.posts[0].userId").doesNotExist())
+                .andExpect(jsonPath("$.posts[0].id").value(1))
+                .andExpect(jsonPath("$.posts[0].title").value("sunt aut facere"))
+                .andExpect(jsonPath("$.posts[0].body").value("quia et suscipit\nsuscipit recusandae"))
+                .andExpect(jsonPath("$.posts[1].title").value("qui est esse"))
                 .andExpect(jsonPath("$.postsAvailable").value(true));
     }
 

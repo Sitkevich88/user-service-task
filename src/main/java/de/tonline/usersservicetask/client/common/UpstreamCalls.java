@@ -1,4 +1,4 @@
-package de.tonline.usersservicetask.client;
+package de.tonline.usersservicetask.client.common;
 
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -10,12 +10,12 @@ import java.net.http.HttpTimeoutException;
 import java.util.function.Supplier;
 
 /** Translates Spring's RestClient exceptions into our own small exception model. */
-final class UpstreamCalls {
+public final class UpstreamCalls {
 
     private UpstreamCalls() {
     }
 
-    static <T> T execute(String what, Supplier<T> call) {
+    public static <T> T execute(String what, Supplier<T> call) {
         try {
             return call.get();
         } catch (HttpServerErrorException e) {

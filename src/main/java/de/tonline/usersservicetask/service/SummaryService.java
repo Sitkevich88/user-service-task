@@ -1,11 +1,11 @@
 package de.tonline.usersservicetask.service;
 
-import de.tonline.usersservicetask.api.SummaryResponse;
+import de.tonline.usersservicetask.api.dto.SummaryResponse;
 import de.tonline.usersservicetask.client.PostsClient;
-import de.tonline.usersservicetask.client.PostsClient.UpstreamPost;
-import de.tonline.usersservicetask.client.UpstreamException;
+import de.tonline.usersservicetask.api.dto.Post;
+import de.tonline.usersservicetask.client.common.UpstreamException;
 import de.tonline.usersservicetask.client.UsersClient;
-import de.tonline.usersservicetask.client.UsersClient.UpstreamUser;
+import de.tonline.usersservicetask.api.dto.User;
 import de.tonline.usersservicetask.config.UpstreamProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,12 +43,12 @@ public class SummaryService {
     public SummaryResponse getSummary(long id) {
         long start = System.nanoTime();
 
-        CompletableFuture<UpstreamUser> userFuture =
+        CompletableFuture<User> userFuture =
                 CompletableFuture.supplyAsync(() -> usersClient.fetch(id), executor);
-        CompletableFuture<List<UpstreamPost>> postsFuture =
-                CompletableFuture.supplyAsync(() -> fetchPostsWithRetry(id, start), executor);
+        CompletableFuture<List<Post>> postsFuture =
+                CompletableFuture.supplyAsync(() -> postsClient.fetchByUser(id), executor);
 
-        UpstreamUser user;
+        User user;
         try {
             user = userFuture.join();
         } catch (java.util.concurrent.CompletionException e) {
@@ -56,7 +56,7 @@ public class SummaryService {
             throw unwrap(e);
         }
 
-        List<UpstreamPost> posts = List.of();
+        List<Post> posts = List.of();
         boolean available = true;
         try {
             posts = postsFuture.get(remainingNanos(start), TimeUnit.NANOSECONDS);
@@ -74,25 +74,7 @@ public class SummaryService {
             available = false;
         }
 
-        return merge(user, posts, available);
-    }
-
-    private List<UpstreamPost> fetchPostsWithRetry(long userId, long startNanos) {
-        int attempt = 0;
-        while (true) {
-            try {
-                return postsClient.fetchByUser(userId);
-            } catch (UpstreamException e) {
-                boolean canRetry = e.isRetryable() && !e.isTimeout()
-                        && attempt < props.postsRetries()
-                        && remainingNanos(startNanos) > 0;
-                if (!canRetry) {
-                    throw e;
-                }
-                attempt++;
-                log.info("Retrying posts for user {} (attempt {}): {}", userId, attempt + 1, e.getMessage());
-            }
-        }
+        return new SummaryResponse(user, posts, available);
     }
 
     private long remainingNanos(long startNanos) {
@@ -101,13 +83,5 @@ public class SummaryService {
 
     private static RuntimeException unwrap(java.util.concurrent.CompletionException e) {
         return e.getCause() instanceof RuntimeException re ? re : e;
-    }
-
-    private static SummaryResponse merge(UpstreamUser u, List<UpstreamPost> posts, boolean available) {
-        return new SummaryResponse(
-                new SummaryResponse.User(u.id(), u.name(), u.username(), u.email(),
-                        u.company() == null ? null : u.company().name()),
-                posts.stream().map(p -> new SummaryResponse.Post(p.id(), p.title(), p.body())).toList(),
-                available);
     }
 }
