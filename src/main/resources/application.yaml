@@ -11,12 +11,18 @@ upstream:
     base-url: https://jsonplaceholder.typicode.com
     connect-timeout: 1s
     read-timeout: 2s
+    cache:
+      max-size: 500
+      ttl: 1s
 
   # Optional upstream: may take up to 3s and fail ~10% of the time. We cut it off earlier and degrade.
   posts:
     base-url: https://jsonplaceholder.typicode.com
     connect-timeout: 1s
     read-timeout: 1500ms
+    cache:
+      max-size: 500
+      ttl: 1s
     retry:
       # Retries in addition to the first attempt, only for 5xx / IO errors (never 4xx or timeouts).
       max-retries: 1

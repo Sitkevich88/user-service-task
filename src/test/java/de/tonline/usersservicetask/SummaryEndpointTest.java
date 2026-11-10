@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.cache.CacheManager;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -47,9 +48,43 @@ class SummaryEndpointTest {
     @Autowired
     MockMvc mvc;
 
+    @Autowired
+    CacheManager cacheManager;
+
     @BeforeEach
     void resetUpstream() {
         UPSTREAM.reset();
+        // caches live across tests in the shared Spring context
+        cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
+    }
+
+    @Test
+    void repeatedCallsWithinOneSecondAreServedFromCache() throws Exception {
+        mvc.perform(get("/users/1/summary")).andExpect(status().isOk());
+        mvc.perform(get("/users/1/summary")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.id").value(1))
+                .andExpect(jsonPath("$.posts.length()").value(2));
+
+        assertThat(UPSTREAM.userCalls.get()).isEqualTo(1);
+        assertThat(UPSTREAM.postCalls.get()).isEqualTo(1);
+    }
+
+    @Test
+    void cacheEntriesExpireAfterOneSecond() throws Exception {
+        mvc.perform(get("/users/1/summary")).andExpect(status().isOk());
+        Thread.sleep(1200);
+        mvc.perform(get("/users/1/summary")).andExpect(status().isOk());
+
+        assertThat(UPSTREAM.userCalls.get()).isEqualTo(2);
+        assertThat(UPSTREAM.postCalls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void failuresAreNotCached() throws Exception {
+        UPSTREAM.users = n -> n == 1 ? Reply.status(500) : Reply.ok(FakeUpstream.USER_JSON);
+
+        mvc.perform(get("/users/1/summary")).andExpect(status().isBadGateway());
+        mvc.perform(get("/users/1/summary")).andExpect(status().isOk());
     }
 
     @Test

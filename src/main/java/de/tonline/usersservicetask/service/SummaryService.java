@@ -1,11 +1,11 @@
 package de.tonline.usersservicetask.service;
 
-import de.tonline.usersservicetask.api.dto.SummaryResponse;
-import de.tonline.usersservicetask.client.PostsClient;
 import de.tonline.usersservicetask.api.dto.Post;
-import de.tonline.usersservicetask.client.common.UpstreamException;
-import de.tonline.usersservicetask.client.UsersClient;
+import de.tonline.usersservicetask.api.dto.SummaryResponse;
 import de.tonline.usersservicetask.api.dto.User;
+import de.tonline.usersservicetask.client.PostsClient;
+import de.tonline.usersservicetask.client.UsersClient;
+import de.tonline.usersservicetask.client.common.UpstreamException;
 import de.tonline.usersservicetask.config.UpstreamProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -51,7 +51,7 @@ public class SummaryService {
         User user;
         try {
             user = userFuture.join();
-        } catch (java.util.concurrent.CompletionException e) {
+        } catch (CompletionException e) {
             postsFuture.cancel(true); // no point waiting for posts without a user
             throw unwrap(e);
         }
