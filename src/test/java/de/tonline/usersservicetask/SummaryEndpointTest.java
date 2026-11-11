@@ -24,7 +24,6 @@ import org.springframework.test.web.servlet.MockMvc;
  * Timeouts are short so the suite stays fast.
  */
 @SpringBootTest(properties = {
-        "upstream.warm-up-enabled=false",
         "upstream.users.connect-timeout=500ms",
         "upstream.users.read-timeout=600ms",
         "upstream.posts.connect-timeout=500ms",

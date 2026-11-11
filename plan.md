@@ -4,7 +4,7 @@
 > See `NOTES.md` for what was actually built. Main deviations:
 > - Tests use a small fake upstream on the JDK `HttpServer`, not WireMock.
 > - Retry uses Spring 7's built-in `@Retryable`, not a hand-written loop.
-> - A circuit breaker (Resilience4j), a per-upstream Caffeine cache, request logging and a startup warm-up were added.
+> - A circuit breaker (Resilience4j), a per-upstream Caffeine cache, and request logging were added.
 > - The response contains **all** upstream data (full user, posts without `userId`) in shared DTOs, not the reduced shape in section 2.
 > - Config lives in `application.yaml` per client (`upstream.users.*`, `upstream.posts.*`, `resilience4j.*`).
 
