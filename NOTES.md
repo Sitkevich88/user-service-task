@@ -38,11 +38,9 @@ Known limitation: the first request after startup pays for DNS, TLS and class lo
 
 ## What I'd do next
 
-1. Longer TTL for users (they change rarely), now possible per cache, and stampede protection.
-2. Expose the breaker state and degraded-response counter as Micrometer metrics, plus upstream latency timers.
-3. Slow-call threshold for the breaker (open on sustained slowness, not only on errors).
-4. Header such as `X-Degraded: posts` next to the body flag.
-5. A contract test against the real jsonplaceholder schema.
+1. **Docker:** a multi-stage `Dockerfile` and a `docker-compose.yml`, with upstream URLs and timeouts overridable through environment variables.
+2. **Metrics:** Spring Boot Actuator + Micrometer: circuit breaker state, a counter of degraded responses (`postsAvailable=false`), upstream latency timers and cache hit rate, exposed for Prometheus.
+3. **Cache:** a longer TTL for users (they rarely change) and protection against concurrent misses for the same key.
 
 ## Tests
 
