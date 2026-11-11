@@ -48,12 +48,23 @@ public class SummaryService {
         CompletableFuture<List<Post>> postsFuture =
                 CompletableFuture.supplyAsync(() -> postsClient.fetchByUser(id), executor);
 
+        // Note: cancel(true) on a CompletableFuture only completes the future, it does not interrupt a call
+        // that is already in flight; such a call ends at the latest at its own read timeout.
         User user;
         try {
-            user = userFuture.join();
-        } catch (CompletionException e) {
+            user = userFuture.get(remainingNanos(start), TimeUnit.NANOSECONDS);
+        } catch (TimeoutException e) {
+            userFuture.cancel(true);
+            postsFuture.cancel(true);
+            throw new UpstreamException("users service timed out (deadline of " + props.overallDeadline() + ")",
+                    e, true, false);
+        } catch (ExecutionException e) {
             postsFuture.cancel(true); // no point waiting for posts without a user
-            throw unwrap(e);
+            throw unwrap(e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            postsFuture.cancel(true);
+            throw new UpstreamException("interrupted while waiting for users", e, false, false);
         }
 
         List<Post> posts = List.of();
@@ -81,7 +92,7 @@ public class SummaryService {
         return Math.max(0, props.overallDeadline().toNanos() - (System.nanoTime() - startNanos));
     }
 
-    private static RuntimeException unwrap(java.util.concurrent.CompletionException e) {
-        return e.getCause() instanceof RuntimeException re ? re : e;
+    private static RuntimeException unwrap(Throwable cause) {
+        return cause instanceof RuntimeException re ? re : new IllegalStateException(cause);
     }
 }

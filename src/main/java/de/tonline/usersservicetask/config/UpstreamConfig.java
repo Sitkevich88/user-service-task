@@ -1,14 +1,21 @@
 package de.tonline.usersservicetask.config;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
 import de.tonline.usersservicetask.client.LoggingInterceptor;
 import de.tonline.usersservicetask.client.PostsClient;
 import de.tonline.usersservicetask.client.UsersClient;
-import com.github.benmanes.caffeine.cache.Caffeine;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.core.registry.EntryAddedEvent;
+import io.github.resilience4j.core.registry.EntryRemovedEvent;
+import io.github.resilience4j.core.registry.EntryReplacedEvent;
+import io.github.resilience4j.core.registry.RegistryEventConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cache.caffeine.CaffeineCache;
 import org.springframework.cache.support.SimpleCacheManager;
-import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -26,6 +33,8 @@ import java.util.concurrent.Executors;
 @EnableConfigurationProperties(UpstreamProperties.class)
 public class UpstreamConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(UpstreamConfig.class);
+
     @Bean
     UsersClient usersClient(UpstreamProperties props) {
         return new UsersClient(restClient("users", props.users()));
@@ -34,6 +43,26 @@ public class UpstreamConfig {
     @Bean
     PostsClient postsClient(UpstreamProperties props) {
         return new PostsClient(restClient("posts", props.posts()));
+    }
+
+    /** Logs every circuit breaker state change. The breaker itself is configured in application.yaml. */
+    @Bean
+    RegistryEventConsumer<CircuitBreaker> circuitBreakerLogger() {
+        return new RegistryEventConsumer<>() {
+            @Override
+            public void onEntryAddedEvent(EntryAddedEvent<CircuitBreaker> event) {
+                event.getAddedEntry().getEventPublisher().onStateTransition(e ->
+                        log.warn("Circuit breaker '{}' state: {}", e.getCircuitBreakerName(), e.getStateTransition()));
+            }
+
+            @Override
+            public void onEntryRemovedEvent(EntryRemovedEvent<CircuitBreaker> event) {
+            }
+
+            @Override
+            public void onEntryReplacedEvent(EntryReplacedEvent<CircuitBreaker> event) {
+            }
+        };
     }
 
     /** One Caffeine cache per upstream, each with its own TTL and size limit from application.yaml. */

@@ -6,6 +6,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,12 +24,18 @@ import org.springframework.test.web.servlet.MockMvc;
  * Timeouts are short so the suite stays fast.
  */
 @SpringBootTest(properties = {
+        "upstream.warm-up-enabled=false",
         "upstream.users.connect-timeout=500ms",
         "upstream.users.read-timeout=600ms",
         "upstream.posts.connect-timeout=500ms",
         "upstream.posts.read-timeout=400ms",
         "upstream.posts.retry.max-retries=1",
-        "upstream.overall-deadline=1500ms"
+        "upstream.overall-deadline=1500ms",
+        "resilience4j.circuitbreaker.instances.posts.sliding-window-size=4",
+        "resilience4j.circuitbreaker.instances.posts.minimum-number-of-calls=2",
+        "resilience4j.circuitbreaker.instances.posts.failure-rate-threshold=50",
+        "resilience4j.circuitbreaker.instances.posts.wait-duration-in-open-state=500ms",
+        "resilience4j.circuitbreaker.instances.posts.permitted-number-of-calls-in-half-open-state=1"
 })
 @AutoConfigureMockMvc
 class SummaryEndpointTest {
@@ -51,9 +59,16 @@ class SummaryEndpointTest {
     @Autowired
     CacheManager cacheManager;
 
+    @Autowired
+    CircuitBreakerRegistry circuitBreakerRegistry;
+
+    CircuitBreaker postsCircuitBreaker;
+
     @BeforeEach
     void resetUpstream() {
         UPSTREAM.reset();
+        postsCircuitBreaker = circuitBreakerRegistry.circuitBreaker("posts");
+        postsCircuitBreaker.reset();
         // caches live across tests in the shared Spring context
         cacheManager.getCacheNames().forEach(name -> cacheManager.getCache(name).clear());
     }
@@ -77,6 +92,45 @@ class SummaryEndpointTest {
 
         assertThat(UPSTREAM.userCalls.get()).isEqualTo(2);
         assertThat(UPSTREAM.postCalls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void openCircuitSkipsPostsImmediatelyAndRecoversAfterWaitTime() throws Exception {
+        UPSTREAM.posts = n -> Reply.status(500);
+
+        // 1st request: attempt + retry = 2 failures -> circuit opens
+        mvc.perform(get("/users/1/summary")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.postsAvailable").value(false));
+        assertThat(UPSTREAM.postCalls.get()).isEqualTo(2);
+        assertThat(postsCircuitBreaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
+
+        // 2nd request: rejected by the breaker, posts upstream is not called at all
+        UPSTREAM.posts = n -> Reply.ok(FakeUpstream.POSTS_JSON);
+        mvc.perform(get("/users/1/summary")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.id").value(1))
+                .andExpect(jsonPath("$.posts.length()").value(0))
+                .andExpect(jsonPath("$.postsAvailable").value(false));
+        assertThat(UPSTREAM.postCalls.get()).as("no call while open").isEqualTo(2);
+
+        // after the wait time a trial call goes through, succeeds and closes the circuit
+        Thread.sleep(600);
+        mvc.perform(get("/users/1/summary")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.posts.length()").value(2))
+                .andExpect(jsonPath("$.postsAvailable").value(true));
+        assertThat(UPSTREAM.postCalls.get()).isEqualTo(3);
+        assertThat(postsCircuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
+    }
+
+    @Test
+    void clientErrorsOfPostsDoNotOpenTheCircuit() throws Exception {
+        UPSTREAM.posts = n -> Reply.status(404);
+
+        for (int i = 0; i < 4; i++) {
+            mvc.perform(get("/users/1/summary")).andExpect(status().isOk());
+        }
+
+        assertThat(postsCircuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
+        assertThat(UPSTREAM.postCalls.get()).isEqualTo(4);
     }
 
     @Test

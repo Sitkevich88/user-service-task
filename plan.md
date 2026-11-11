@@ -1,5 +1,13 @@
 # Plan: `GET /users/{id}/summary`
 
+> **Status: this is the original plan, kept for history.** The implementation went further and differs in places.
+> See `NOTES.md` for what was actually built. Main deviations:
+> - Tests use a small fake upstream on the JDK `HttpServer`, not WireMock.
+> - Retry uses Spring 7's built-in `@Retryable`, not a hand-written loop.
+> - A circuit breaker (Resilience4j), a per-upstream Caffeine cache, request logging and a startup warm-up were added.
+> - The response contains **all** upstream data (full user, posts without `userId`) in shared DTOs, not the reduced shape in section 2.
+> - Config lives in `application.yaml` per client (`upstream.users.*`, `upstream.posts.*`, `resilience4j.*`).
+
 Timebox: 2 hours. Stack already in place: Java 21, Spring Boot 4.1.2, `RestClient`, Lombok, Maven.
 
 ## 1. Key design decision (the "what happens when posts is slow or fails" question)

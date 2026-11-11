@@ -3,13 +3,15 @@ spring:
     name: users-service-task
 
 upstream:
-  # Hard budget for the whole endpoint. Retries never push the response past this.
+  # Hard budget for the whole endpoint: the wait for users and for posts both end at this point.
   overall-deadline: 3s
+  # One background call per upstream at startup, so the first real request is not slowed by DNS/TLS setup.
+  warm-up-enabled: true
 
   # Required upstream: no summary without a user.
   users:
     base-url: https://jsonplaceholder.typicode.com
-    connect-timeout: 1s
+    connect-timeout: 2s
     read-timeout: 2s
     cache:
       max-size: 500
@@ -18,16 +20,31 @@ upstream:
   # Optional upstream: may take up to 3s and fail ~10% of the time. We cut it off earlier and degrade.
   posts:
     base-url: https://jsonplaceholder.typicode.com
-    connect-timeout: 1s
+    connect-timeout: 2s
     read-timeout: 1500ms
     cache:
       max-size: 500
       ttl: 1s
     retry:
+
       # Retries in addition to the first attempt, only for 5xx / IO errors (never 4xx or timeouts).
       max-retries: 1
       delay-millis: 50
       jitter-millis: 25
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      posts:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        # While open, posts are skipped immediately and the endpoint answers with postsAvailable=false.
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        # 5xx, IO errors and timeouts count as failures, 4xx does not.
+        record-failure-predicate: de.tonline.usersservicetask.client.CircuitBreakerFailurePredicate
 
 server:
   #port: 8080

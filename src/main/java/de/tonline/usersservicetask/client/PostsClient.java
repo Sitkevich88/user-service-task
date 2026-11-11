@@ -4,6 +4,7 @@ import de.tonline.usersservicetask.api.dto.Post;
 import de.tonline.usersservicetask.client.common.UpstreamCalls;
 import de.tonline.usersservicetask.client.common.UpstreamException;
 import de.tonline.usersservicetask.config.CacheNames;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.resilience.annotation.Retryable;
@@ -20,15 +21,22 @@ public class PostsClient {
     }
 
     /**
-     * Retried by Spring's built-in {@code @Retryable} (enabled via {@code @EnableResilientMethods}):
-     * only {@link UpstreamException}s that {@link TransientFailurePredicate} accepts, i.e. 5xx / IO errors,
-     * never 4xx and never timeouts. Successful results are cached briefly (see {@code upstream.posts.cache.*}); failures never are. Retry count, delay and jitter come from {@code upstream.posts.retry.*}.
+     * Protection layers, outermost first:
+     * <ol>
+     *   <li>{@code @Cacheable}: only successful results are cached ({@code upstream.posts.cache.*}).</li>
+     *   <li>{@code @Retryable}: only 5xx / IO errors, see {@link TransientFailurePredicate}; never 4xx or
+     *       timeouts. Count, delay and jitter come from {@code upstream.posts.retry.*}.</li>
+     *   <li>{@code @CircuitBreaker}: configured under {@code resilience4j.circuitbreaker.instances.posts}.
+     *       While open it throws {@code CallNotPermittedException} (not an {@link UpstreamException}), so it
+     *       is neither retried nor cached, and {@code SummaryService} degrades the response immediately.</li>
+     * </ol>
      */
+    @Cacheable(CacheNames.POSTS)
     @Retryable(includes = UpstreamException.class, predicate = TransientFailurePredicate.class,
             maxRetriesString = "${upstream.posts.retry.max-retries}",
             delayString = "${upstream.posts.retry.delay-millis}",
             jitterString = "${upstream.posts.retry.jitter-millis}")
-    @Cacheable(CacheNames.POSTS)
+    @CircuitBreaker(name = "posts")
     public List<Post> fetchByUser(long userId) {
         return UpstreamCalls.execute("posts service", () -> {
             List<Post> posts = restClient.get().uri("/posts?userId={id}", userId)
